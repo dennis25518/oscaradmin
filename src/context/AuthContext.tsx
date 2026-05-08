@@ -39,12 +39,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   async function fetchAdminProfile(uid: string) {
-    const { data } = await supabase
-      .from("admin_users")
-      .select("*")
-      .eq("auth_id", uid)
-      .single();
-    setAdminProfile(data ?? null);
+    try {
+      const { data, error } = await supabase
+        .from("admin_users")
+        .select("*")
+        .eq("auth_id", uid)
+        .single();
+      
+      if (error) {
+        console.warn("Admin profile not found:", error.message);
+        setAdminProfile(null);
+        return;
+      }
+      
+      setAdminProfile(data ?? null);
+    } catch (err) {
+      console.warn("Error fetching admin profile:", err);
+      setAdminProfile(null);
+    }
   }
 
   async function refreshAdminProfile() {

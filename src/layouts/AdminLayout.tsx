@@ -4,10 +4,8 @@ import { useState } from "react";
 import {
   FiHome,
   FiBox,
-  FiGrid,
   FiShoppingCart,
   FiUsers,
-  FiPackage,
   FiHeart,
   FiSettings,
   FiLogOut,
@@ -21,10 +19,8 @@ import {
 const NAV = [
   { to: "/", icon: FiHome, label: "Dashboard", end: true },
   { to: "/products", icon: FiBox, label: "Products" },
-  { to: "/categories", icon: FiGrid, label: "Categories" },
   { to: "/orders", icon: FiShoppingCart, label: "Orders" },
   { to: "/users", icon: FiUsers, label: "Users" },
-  { to: "/inventory", icon: FiPackage, label: "Inventory" },
   { to: "/donations", icon: FiHeart, label: "Donations" },
   { to: "/settings", icon: FiSettings, label: "Settings" },
 ];

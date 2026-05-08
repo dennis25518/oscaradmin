@@ -5,10 +5,8 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import Products from "./pages/Products";
 import ProductForm from "./pages/ProductForm";
-import Categories from "./pages/Categories";
 import Orders from "./pages/Orders";
 import Users from "./pages/Users";
-import Inventory from "./pages/Inventory";
 import Donations from "./pages/Donations";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
@@ -45,10 +43,8 @@ export default function App() {
             <Route path="products" element={<Products />} />
             <Route path="products/new" element={<ProductForm />} />
             <Route path="products/:id/edit" element={<ProductForm />} />
-            <Route path="categories" element={<Categories />} />
             <Route path="orders" element={<Orders />} />
             <Route path="users" element={<Users />} />
-            <Route path="inventory" element={<Inventory />} />
             <Route path="donations" element={<Donations />} />
             <Route path="profile" element={<Profile />} />
             <Route path="settings" element={<Settings />} />

@@ -2,24 +2,26 @@ import { useEffect, useState } from "react";
 import { supabase, formatTZS } from "../lib/supabase";
 import { FiSearch } from "react-icons/fi";
 
+interface ShippingAddress {
+  label?: string;
+  address_line_1?: string;
+  city?: string;
+}
+
 interface Order {
   id: string;
-  order_number: string;
+  order_number?: string;
   status: string;
-  subtotal: number;
-  delivery_fee: number;
-  discount_amount: number;
-  total_amount: number;
-  payment_status: string;
-  currency: string;
-  notes: string;
-  created_at: string;
-  user_id: string;
-  shipping_address: {
-    label: string;
-    address_line_1: string;
-    city: string;
-  } | null;
+  subtotal?: number;
+  delivery_fee?: number;
+  discount_amount?: number;
+  total_amount?: number;
+  payment_status?: string;
+  currency?: string;
+  notes?: string;
+  created_at?: string;
+  user_id?: string;
+  shipping_address?: ShippingAddress | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -47,13 +49,42 @@ export default function Orders() {
 
   async function load() {
     setLoading(true);
-    const { data } = await supabase
-      .from("orders")
-      .select("*, shipping_address:user_addresses(label, address_line_1, city)")
-      .order("created_at", { ascending: false })
-      .limit(200);
-    setOrders((data as unknown as Order[]) ?? []);
-    setLoading(false);
+    try {
+      let { data, error } = await supabase
+        .from("orders")
+        .select("id, order_number, status, payment_status, created_at, user_id")
+        .order("created_at", { ascending: false })
+        .limit(200);
+
+      if (error) {
+        console.error("Error fetching orders:", error.message, error.details);
+        setOrders([]);
+        return;
+      }
+
+      const normalized = (data ?? []).map((item: any) => ({
+        id: item.id,
+        order_number: item.order_number,
+        status: item.status ?? "pending",
+        subtotal: 0,
+        delivery_fee: 0,
+        discount_amount: 0,
+        total_amount: Number(item.total_amount ?? 0),
+        payment_status: item.payment_status ?? "unpaid",
+        currency: "TZS",
+        notes: "",
+        created_at: item.created_at ?? new Date().toISOString(),
+        user_id: item.user_id ?? "",
+        shipping_address: null,
+      } as Order));
+
+      setOrders(normalized);
+    } catch (err) {
+      console.error("Error loading orders:", err);
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {

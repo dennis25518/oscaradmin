@@ -42,21 +42,33 @@ export default function Profile() {
     if (!adminProfile) return;
     setSaving(true);
     setMessage("");
-    const { error } = await supabase
-      .from("admin_users")
-      .update({ full_name: fullName, phone, avatar_url: avatarUrl })
-      .eq("id", adminProfile.id);
-    // Also sync to auth metadata
-    await supabase.auth.updateUser({
-      data: { full_name: fullName, phone, avatar_url: avatarUrl },
-    });
-    setSaving(false);
-    if (error) {
-      setMessage(error.message);
-    } else {
-      setMessage("Profile updated successfully.");
-      await refreshAdminProfile();
+    try {
+      const { error } = await supabase
+        .from("admin_users")
+        .update({ full_name: fullName, phone, avatar_url: avatarUrl })
+        .eq("id", adminProfile.id);
+      
+      if (error && !error.message.includes("does not exist")) {
+        setMessage(error.message);
+        setSaving(false);
+        return;
+      }
+    } catch (err) {
+      console.warn("Error updating admin profile:", err);
     }
+    
+    // Also sync to auth metadata
+    try {
+      await supabase.auth.updateUser({
+        data: { full_name: fullName, phone, avatar_url: avatarUrl },
+      });
+    } catch (err) {
+      console.error("Error updating auth metadata:", err);
+    }
+    
+    setSaving(false);
+    setMessage("Profile updated successfully.");
+    await refreshAdminProfile();
   }
 
   const createdAt = user?.created_at

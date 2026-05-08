@@ -22,29 +22,41 @@ export default function Users() {
 
   useEffect(() => {
     (async () => {
-      const [contactsRes, subsRes] = await Promise.all([
-        supabase
-          .from("user_contacts")
-          .select("id, user_id, label, phone, is_primary, created_at")
-          .order("created_at", { ascending: false })
-          .limit(200),
-        supabase
-          .from("newsletter_subscribers")
-          .select("id, email, name, subscribed_at")
-          .order("subscribed_at", { ascending: false })
-          .limit(200),
-      ]);
+      try {
+        const [contactsRes, subsRes] = await Promise.all([
+          supabase
+            .from("user_contacts")
+            .select("id, user_id, label, phone, is_primary, created_at")
+            .order("created_at", { ascending: false })
+            .limit(200),
+          supabase
+            .from("newsletter_subscribers")
+            .select("id, email, name, subscribed_at")
+            .order("subscribed_at", { ascending: false })
+            .limit(200),
+        ]);
 
-      setUsers((contactsRes.data as AppUser[]) ?? []);
-      setSubscribers(
-        (subsRes.data as {
-          id: string;
-          email: string;
-          name: string;
-          subscribed_at: string;
-        }[]) ?? [],
-      );
-      setLoading(false);
+        if (contactsRes.error) {
+          console.error("Error fetching contacts:", contactsRes.error.message, contactsRes.error.details);
+        }
+        if (subsRes.error) {
+          console.error("Error fetching subscribers:", subsRes.error.message, subsRes.error.details);
+        }
+
+        setUsers((contactsRes.data as AppUser[]) ?? []);
+        setSubscribers(
+          (subsRes.data as {
+            id: string;
+            email: string;
+            name: string;
+            subscribed_at: string;
+          }[]) ?? [],
+        );
+      } catch (err) {
+        console.error("Error loading users:", err);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 

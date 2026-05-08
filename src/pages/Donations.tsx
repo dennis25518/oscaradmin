@@ -22,20 +22,34 @@ export default function Donations() {
 
   useEffect(() => {
     (async () => {
-      const { data } = await supabase
-        .from("donations")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(200);
-      const donations = data ?? [];
-      setRows(donations as Donation[]);
-      setTotal(
-        donations.reduce(
-          (s, d: Record<string, unknown>) => s + ((d.amount as number) ?? 0),
-          0,
-        ),
-      );
-      setLoading(false);
+      try {
+        const { data, error } = await supabase
+          .from("donations")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(200);
+
+        if (error) {
+          console.error("Error fetching donations:", error.message, error.details);
+          setRows([]);
+          setLoading(false);
+          return;
+        }
+
+        const donations = data ?? [];
+        setRows(donations as Donation[]);
+        setTotal(
+          donations.reduce(
+            (s, d: Record<string, unknown>) => s + ((d.amount as number) ?? 0),
+            0,
+          ),
+        );
+      } catch (err) {
+        console.error("Error loading donations:", err);
+        setRows([]);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, []);
 
