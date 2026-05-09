@@ -100,7 +100,7 @@ export default function Profile() {
       if (avatarFile) finalUrl = await uploadAvatar();
 
       // Update admin_users using auth_id so it works even if adminProfile didn't load
-      const { error, count } = await supabase
+      const { data, error } = await supabase
         .from("admin_users")
         .update({
           full_name: fullName.trim(),
@@ -109,11 +109,11 @@ export default function Profile() {
           updated_at: new Date().toISOString(),
         })
         .eq("auth_id", user.id)
-        .select("id", { count: "exact" });
+        .select("id");
 
       if (error)
         throw new Error(`Database error (${error.code}): ${error.message}`);
-      if (count === 0)
+      if (!data || data.length === 0)
         throw new Error(
           "No admin_users row found for your account. Run the RLS policy SQL shown below.",
         );
