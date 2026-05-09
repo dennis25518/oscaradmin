@@ -11,6 +11,9 @@ import Donations from "./pages/Donations";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
 import Register from "./pages/Register";
+import Maswali from "./pages/Maswali";
+import Comments from "./pages/Comments";
+import Finance from "./pages/Finance";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -48,6 +51,9 @@ export default function App() {
             <Route path="donations" element={<Donations />} />
             <Route path="profile" element={<Profile />} />
             <Route path="settings" element={<Settings />} />
+            <Route path="maswali" element={<Maswali />} />
+            <Route path="comments" element={<Comments />} />
+            <Route path="finance" element={<Finance />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -1,27 +1,21 @@
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { supabase, formatTZS } from "../lib/supabase";
-import { FiSearch } from "react-icons/fi";
+import { FiSearch, FiRefreshCw } from "react-icons/fi";
 
-interface ShippingAddress {
-  label?: string;
-  address_line_1?: string;
-  city?: string;
+interface OrderItem {
+  name?: string;
+  price?: number;
+  quantity?: number;
 }
 
 interface Order {
   id: string;
   order_number?: string;
   status: string;
-  subtotal?: number;
-  delivery_fee?: number;
-  discount_amount?: number;
-  total_amount?: number;
-  payment_status?: string;
-  currency?: string;
-  notes?: string;
+  total: number;
+  items?: OrderItem[];
   created_at?: string;
   user_id?: string;
-  shipping_address?: ShippingAddress | null;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -45,38 +39,34 @@ const STATUSES = [
 export default function Orders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     try {
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from("orders")
-        .select("id, order_number, status, payment_status, created_at, user_id")
+        .select("*")
         .order("created_at", { ascending: false })
-        .limit(200);
+        .limit(500);
 
       if (error) {
-        console.error("Error fetching orders:", error.message, error.details);
+        console.error("Error fetching orders:", error.message);
         setOrders([]);
         return;
       }
 
-      const normalized = (data ?? []).map((item: any) => ({
+      const normalized: Order[] = (data ?? []).map((item: any) => ({
         id: item.id,
-        order_number: item.order_number,
+        order_number: item.order_number ?? null,
         status: item.status ?? "pending",
-        subtotal: 0,
-        delivery_fee: 0,
-        discount_amount: 0,
-        total_amount: Number(item.total_amount ?? 0),
-        payment_status: item.payment_status ?? "unpaid",
-        currency: "TZS",
-        notes: "",
+        total: Number(item.total ?? 0),
+        items: Array.isArray(item.items) ? item.items : [],
         created_at: item.created_at ?? new Date().toISOString(),
         user_id: item.user_id ?? "",
-        shipping_address: null,
-      } as Order));
+      }));
 
       setOrders(normalized);
     } catch (err) {
@@ -91,34 +81,71 @@ export default function Orders() {
     load();
   }, []);
 
-  async function updateStatus(id: string, status: string) {
-    await supabase.from("orders").update({ status }).eq("id", id);
-    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
-  }
+  const filtered = orders.filter((o) => {
+    const q = search.toLowerCase();
+    const matchesSearch =
+      !q ||
+      (o.order_number ?? "").toLowerCase().includes(q) ||
+      (o.user_id ?? "").toLowerCase().includes(q);
+    const matchesStatus = statusFilter === "all" || o.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
-  const filtered = orders.filter(
-    (o) =>
-      (o.order_number ?? "").toLowerCase().includes(search.toLowerCase()) ||
-      (o.shipping_address?.address_line_1 ?? "")
-        .toLowerCase()
-        .includes(search.toLowerCase()) ||
-      (o.shipping_address?.city ?? "")
-        .toLowerCase()
-        .includes(search.toLowerCase()),
-  );
+  const totalRevenue = filtered.reduce((s, o) => s + o.total, 0);
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold">Orders</h2>
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold">Orders</h2>
+        <button
+          onClick={load}
+          disabled={loading}
+          className="flex items-center gap-2 rounded-lg border border-border bg-white px-3 py-2 text-sm hover:bg-muted disabled:opacity-50"
+        >
+          <FiRefreshCw className={loading ? "animate-spin" : ""} />
+          Refresh
+        </button>
+      </div>
 
-      <div className="relative max-w-sm">
-        <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search orders…"
-          className="w-full rounded-lg border border-border bg-white py-2.5 pl-10 pr-4 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
-        />
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {[
+          { label: "Total Orders", value: orders.length },
+          { label: "Filtered", value: filtered.length },
+          {
+            label: "Pending",
+            value: orders.filter((o) => o.status === "pending").length,
+          },
+          { label: "Revenue (filtered)", value: formatTZS(totalRevenue) },
+        ].map((s) => (
+          <div key={s.label} className="rounded-xl bg-white p-4 shadow-sm">
+            <p className="text-xs text-gray-500">{s.label}</p>
+            <p className="mt-1 text-xl font-semibold">{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search by order # or user..."
+            className="w-full rounded-lg border border-border bg-white py-2.5 pl-10 pr-4 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+          />
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="rounded-lg border border-border bg-white px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
+        >
+          <option value="all">All statuses</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s.charAt(0).toUpperCase() + s.slice(1)}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="overflow-x-auto rounded-2xl bg-white shadow-sm">
@@ -127,83 +154,122 @@ export default function Orders() {
             <tr>
               <th className="px-4 py-3">Order #</th>
               <th className="px-4 py-3">Date</th>
-              <th className="px-4 py-3">Address</th>
               <th className="px-4 py-3 text-right">Total</th>
-              <th className="px-4 py-3 text-center">Payment</th>
               <th className="px-4 py-3 text-center">Status</th>
-              <th className="px-4 py-3 text-center">Update</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-gray-400">
-                  Loading…
+                <td colSpan={4} className="py-12 text-center text-gray-400">
+                  <FiRefreshCw className="mx-auto mb-2 animate-spin text-2xl" />
+                  Loading orders...
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-gray-400">
+                <td colSpan={4} className="py-12 text-center text-gray-400">
                   No orders found.
                 </td>
               </tr>
             ) : (
               filtered.map((o) => (
-                <tr
-                  key={o.id}
-                  className="border-b border-border last:border-0 hover:bg-muted/50"
-                >
-                  <td className="px-4 py-3 font-medium">
-                    {o.order_number ?? o.id.slice(0, 8)}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500">
-                    {new Date(o.created_at).toLocaleDateString("en-GB", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </td>
-                  <td className="px-4 py-3 text-gray-500 max-w-[200px] truncate">
-                    {o.shipping_address
-                      ? `${o.shipping_address.address_line_1}, ${o.shipping_address.city}`
-                      : "-"}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium">
-                    {formatTZS(o.total_amount ?? 0)}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${o.payment_status === "paid" ? "bg-emerald-100 text-emerald-700" : o.payment_status === "refunded" ? "bg-orange-100 text-orange-700" : o.payment_status === "failed" ? "bg-red-100 text-red-700" : "bg-yellow-100 text-yellow-700"}`}
-                    >
-                      {o.payment_status ?? "unpaid"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span
-                      className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[o.status] ?? "bg-gray-100 text-gray-600"}`}
-                    >
-                      {o.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <select
-                      value={o.status}
-                      onChange={(e) => updateStatus(o.id, e.target.value)}
-                      className="rounded border border-border px-2 py-1 text-xs focus:border-primary focus:outline-none"
-                    >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
+                <React.Fragment key={o.id}>
+                  <tr
+                    onClick={() =>
+                      setExpandedId(expandedId === o.id ? null : o.id)
+                    }
+                    className="cursor-pointer border-b border-border last:border-0 hover:bg-muted/50"
+                  >
+                    <td className="px-4 py-3 font-medium text-primary">
+                      {o.order_number ?? `#${o.id.slice(0, 8)}`}
+                    </td>
+                    <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      {new Date(o.created_at!).toLocaleDateString("en-GB", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </td>
+                    <td className="px-4 py-3 text-right font-semibold">
+                      {formatTZS(o.total)}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span
+                        className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_COLORS[o.status] ?? "bg-gray-100 text-gray-600"}`}
+                      >
+                        {o.status}
+                      </span>
+                    </td>
+                  </tr>
+
+                  {expandedId === o.id && (
+                    <tr className="bg-muted/30">
+                      <td colSpan={4} className="px-6 py-4">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <p className="mb-1 text-xs font-semibold uppercase text-gray-400">
+                              Order Info
+                            </p>
+                            <div className="space-y-1 text-sm text-gray-700">
+                              <p>
+                                <span className="text-gray-400">ID: </span>
+                                {o.id}
+                              </p>
+                              <p>
+                                <span className="text-gray-400">User: </span>
+                                {o.user_id || "unknown"}
+                              </p>
+                              <div className="flex justify-between border-t pt-1 font-semibold">
+                                <span>Total</span>
+                                <span>{formatTZS(o.total)}</span>
+                              </div>
+                            </div>
+                          </div>
+                          {(o.items ?? []).length > 0 && (
+                            <div>
+                              <p className="mb-1 text-xs font-semibold uppercase text-gray-400">
+                                Items ({o.items!.length})
+                              </p>
+                              <div className="space-y-1 text-sm">
+                                {o.items!.map((item, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="flex justify-between"
+                                  >
+                                    <span className="text-gray-700 truncate max-w-[200px]">
+                                      {item.name ?? "Product"}{" "}
+                                      <span className="text-gray-400">
+                                        x{item.quantity ?? 1}
+                                      </span>
+                                    </span>
+                                    <span>
+                                      {formatTZS(
+                                        (item.price ?? 0) *
+                                          (item.quantity ?? 1),
+                                      )}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      {!loading && (
+        <p className="text-right text-xs text-gray-400">
+          Showing {filtered.length} of {orders.length} orders
+        </p>
+      )}
     </div>
   );
 }

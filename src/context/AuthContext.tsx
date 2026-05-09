@@ -44,14 +44,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .from("admin_users")
         .select("*")
         .eq("auth_id", uid)
-        .single();
-      
+        .maybeSingle();
+
       if (error) {
         console.warn("Admin profile not found:", error.message);
         setAdminProfile(null);
         return;
       }
-      
+
       setAdminProfile(data ?? null);
     } catch (err) {
       console.warn("Error fetching admin profile:", err);

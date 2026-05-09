@@ -14,6 +14,9 @@ import {
   FiUser,
   FiChevronsLeft,
   FiChevronsRight,
+  FiMessageCircle,
+  FiStar,
+  FiBarChart2,
 } from "react-icons/fi";
 
 const NAV = [
@@ -22,6 +25,9 @@ const NAV = [
   { to: "/orders", icon: FiShoppingCart, label: "Orders" },
   { to: "/users", icon: FiUsers, label: "Users" },
   { to: "/donations", icon: FiHeart, label: "Donations" },
+  { to: "/maswali", icon: FiMessageCircle, label: "Maswali" },
+  { to: "/comments", icon: FiStar, label: "Comments" },
+  { to: "/finance", icon: FiBarChart2, label: "Finance" },
   { to: "/settings", icon: FiSettings, label: "Settings" },
 ];
 

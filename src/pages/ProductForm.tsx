@@ -1,89 +1,74 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { FiUpload, FiImage, FiFile, FiX } from "react-icons/fi";
 
-interface Category {
-  id: string;
-  name: string;
-}
-interface Brand {
-  id: string;
-  name: string;
-}
+const BUCKET = "Mkatoliki_products";
 
 const EMPTY = {
   name: "",
-  slug: "",
-  sku: "",
-  short_desc: "",
   description: "",
-  base_price: 0,
-  sale_price: null as number | null,
-  currency: "TZS",
-  weight_grams: null as number | null,
-  tags: "[]",
-  is_active: true,
-  is_featured: false,
-  category_id: "",
-  brand_id: "",
+  price: "" as string | number,
 };
 
 export default function ProductForm() {
   const { id } = useParams();
   const navigate = useNavigate();
   const isEdit = !!id;
+
   const [form, setForm] = useState(EMPTY);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [brands, setBrands] = useState<Brand[]>([]);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const [ebookFile, setEbookFile] = useState<File | null>(null);
+  const [existingFileUrl, setExistingFileUrl] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const imageRef = useRef<HTMLInputElement>(null);
+  const ebookRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    (async () => {
-      const [catRes, brandRes] = await Promise.all([
-        supabase.from("categories").select("id, name").order("sort_order"),
-        supabase.from("brands").select("id, name").order("sort_order"),
-      ]);
-      setCategories(catRes.data ?? []);
-      setBrands(brandRes.data ?? []);
-
-      if (isEdit) {
-        const { data } = await supabase
-          .from("products")
-          .select("*")
-          .eq("id", id)
-          .single();
-        if (data) {
-          setForm({
-            name: data.name ?? "",
-            slug: data.slug ?? "",
-            sku: data.sku ?? "",
-            short_desc: data.short_desc ?? "",
-            description: data.description ?? "",
-            base_price: data.base_price ?? 0,
-            sale_price: data.sale_price,
-            currency: data.currency ?? "TZS",
-            weight_grams: data.weight_grams,
-            tags: JSON.stringify(data.tags ?? []),
-            is_active: data.is_active ?? true,
-            is_featured: data.is_featured ?? false,
-            category_id: data.category_id ?? "",
-            brand_id: data.brand_id ?? "",
-          });
-        }
-      }
-    })();
+    if (!isEdit) return;
+    supabase
+      .from("products")
+      .select("id, name, description, price, image, file_url")
+      .eq("id", id)
+      .single()
+      .then(({ data }) => {
+        if (!data) return;
+        setForm({
+          name: data.name ?? "",
+          description: data.description ?? "",
+          price: data.price ?? 0,
+        });
+        if (data.image) setImagePreview(data.image);
+        if (data.file_url) setExistingFileUrl(data.file_url);
+      });
   }, [id, isEdit]);
 
-  function set(key: string, val: unknown) {
-    setForm((prev) => ({ ...prev, [key]: val }));
+  function handleImageChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
   }
 
-  function slugify(s: string) {
-    return s
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/(^-|-$)/g, "");
+  function handleEbookChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEbookFile(file);
+  }
+
+  async function uploadFile(file: File, folder: string): Promise<string> {
+    const ext = file.name.split(".").pop();
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `${folder}/${Date.now()}_${safeName}`;
+    const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+      cacheControl: "3600",
+      upsert: false,
+    });
+    if (error) throw new Error("Upload failed: " + error.message);
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+    return data.publicUrl;
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -91,49 +76,68 @@ export default function ProductForm() {
     setError("");
     setSaving(true);
 
-    const payload = {
-      name: form.name,
-      slug: form.slug || slugify(form.name),
-      sku: form.sku,
-      short_desc: form.short_desc,
-      description: form.description,
-      base_price: Number(form.base_price),
-      sale_price: form.sale_price ? Number(form.sale_price) : null,
-      currency: form.currency,
-      weight_grams: form.weight_grams ? Number(form.weight_grams) : null,
-      tags: JSON.parse(form.tags || "[]"),
-      is_active: form.is_active,
-      is_featured: form.is_featured,
-      category_id: form.category_id || null,
-      brand_id: form.brand_id || null,
-    };
+    try {
+      let imageUrl = imagePreview;
+      let fileUrl = existingFileUrl;
 
-    let err;
-    if (isEdit) {
-      ({ error: err } = await supabase
-        .from("products")
-        .update(payload)
-        .eq("id", id));
-    } else {
-      ({ error: err } = await supabase.from("products").insert(payload));
-    }
+      // Upload new image if selected
+      if (imageFile) {
+        imageUrl = await uploadFile(imageFile, "product_images");
+      }
 
-    setSaving(false);
-    if (err) {
-      setError(err.message);
-      return;
+      // Upload new ebook if selected
+      if (ebookFile) {
+        fileUrl = await uploadFile(ebookFile, "ebooks");
+      }
+
+      const payload: Record<string, any> = {
+        name: form.name.trim(),
+        description: form.description.trim(),
+        price: Number(form.price),
+        image: imageUrl || null,
+        file_url: fileUrl || null,
+      };
+
+      let err;
+      if (isEdit) {
+        ({ error: err } = await supabase
+          .from("products")
+          .update(payload)
+          .eq("id", id));
+      } else {
+        ({ error: err } = await supabase.from("products").insert(payload));
+      }
+
+      if (err) {
+        setError(err.message);
+        return;
+      }
+
+      navigate("/products");
+    } catch (ex: any) {
+      setError(ex.message ?? "An error occurred");
+    } finally {
+      setSaving(false);
     }
-    navigate("/products");
   }
 
   const inputClass =
     "w-full rounded-lg border border-border bg-white px-4 py-2.5 text-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20";
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <h2 className="text-2xl font-bold">
-        {isEdit ? "Edit Product" : "New Product"}
-      </h2>
+    <div className="mx-auto max-w-2xl space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => navigate("/products")}
+          className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted transition"
+        >
+          ← Back
+        </button>
+        <h2 className="text-2xl font-bold">
+          {isEdit ? "Edit Product" : "Add New Product"}
+        </h2>
+      </div>
 
       {error && (
         <div className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
@@ -143,133 +147,35 @@ export default function ProductForm() {
 
       <form
         onSubmit={handleSubmit}
-        className="space-y-6 rounded-2xl bg-white p-6 shadow-sm"
+        className="space-y-5 rounded-2xl bg-white p-6 shadow-sm"
       >
-        {/* Name + SKU */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-medium">Name</label>
-            <input
-              required
-              value={form.name}
-              onChange={(e) => {
-                set("name", e.target.value);
-                if (!isEdit) set("slug", slugify(e.target.value));
-              }}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium">SKU</label>
-            <input
-              value={form.sku}
-              onChange={(e) => set("sku", e.target.value)}
-              className={inputClass}
-            />
-          </div>
-        </div>
-
-        {/* Slug */}
+        {/* Product Name */}
         <div>
-          <label className="mb-1 block text-sm font-medium">Slug</label>
+          <label className="mb-1 block text-sm font-medium">
+            Product Name <span className="text-red-500">*</span>
+          </label>
           <input
-            value={form.slug}
-            onChange={(e) => set("slug", e.target.value)}
+            required
+            value={form.name}
+            onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+            placeholder="e.g. Novena Ya Mt. Charbel"
             className={inputClass}
           />
         </div>
 
-        {/* Category + Brand */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label className="mb-1 block text-sm font-medium">Category</label>
-            <select
-              value={form.category_id}
-              onChange={(e) => set("category_id", e.target.value)}
-              className={inputClass}
-            >
-              <option value="">— None —</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium">Brand</label>
-            <select
-              value={form.brand_id}
-              onChange={(e) => set("brand_id", e.target.value)}
-              className={inputClass}
-            >
-              <option value="">— None —</option>
-              {brands.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        {/* Price + Old price */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Base Price (TZS)
-            </label>
-            <input
-              type="number"
-              required
-              min={0}
-              value={form.base_price}
-              onChange={(e) => set("base_price", e.target.value)}
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium">Sale Price</label>
-            <input
-              type="number"
-              min={0}
-              value={form.sale_price ?? ""}
-              onChange={(e) =>
-                set(
-                  "sale_price",
-                  e.target.value ? Number(e.target.value) : null,
-                )
-              }
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Weight (grams)
-            </label>
-            <input
-              type="number"
-              min={0}
-              value={form.weight_grams ?? ""}
-              onChange={(e) =>
-                set(
-                  "weight_grams",
-                  e.target.value ? Number(e.target.value) : null,
-                )
-              }
-              className={inputClass}
-            />
-          </div>
-        </div>
-
-        {/* Short description */}
+        {/* Price */}
         <div>
           <label className="mb-1 block text-sm font-medium">
-            Short Description
+            Price (TZS) <span className="text-red-500">*</span>
           </label>
           <input
-            value={form.short_desc}
-            onChange={(e) => set("short_desc", e.target.value)}
+            required
+            type="number"
+            min={0}
+            step={100}
+            value={form.price}
+            onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
+            placeholder="e.g. 5000"
             className={inputClass}
           />
         </div>
@@ -278,56 +184,132 @@ export default function ProductForm() {
         <div>
           <label className="mb-1 block text-sm font-medium">Description</label>
           <textarea
-            rows={4}
+            rows={5}
             value={form.description}
-            onChange={(e) => set("description", e.target.value)}
+            onChange={(e) =>
+              setForm((f) => ({ ...f, description: e.target.value }))
+            }
+            placeholder="Describe the product…"
             className={inputClass}
           />
         </div>
 
-        {/* Tags JSON */}
+        {/* Cover Image */}
+        <div>
+          <label className="mb-1 block text-sm font-medium">Cover Image</label>
+          <input
+            ref={imageRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleImageChange}
+          />
+          {imagePreview ? (
+            <div className="relative inline-block">
+              <img
+                src={imagePreview}
+                alt="preview"
+                className="h-40 w-40 rounded-lg border border-border object-cover"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setImageFile(null);
+                  setImagePreview("");
+                  if (imageRef.current) imageRef.current.value = "";
+                }}
+                className="absolute -right-2 -top-2 rounded-full bg-white p-0.5 shadow border border-gray-200 text-gray-500 hover:text-red-500"
+              >
+                <FiX size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => imageRef.current?.click()}
+              className="flex items-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-6 py-4 text-sm text-gray-500 hover:border-primary hover:text-primary transition"
+            >
+              <FiImage size={20} />
+              Click to upload cover image
+            </button>
+          )}
+          {imagePreview && !imageFile && (
+            <button
+              type="button"
+              onClick={() => imageRef.current?.click()}
+              className="mt-2 flex items-center gap-1 text-xs text-primary hover:underline"
+            >
+              <FiUpload size={12} /> Change image
+            </button>
+          )}
+        </div>
+
+        {/* eBook File */}
         <div>
           <label className="mb-1 block text-sm font-medium">
-            Tags (JSON array)
+            eBook / PDF File
           </label>
           <input
-            value={form.tags}
-            onChange={(e) => set("tags", e.target.value)}
-            placeholder='["Best Seller","New"]'
-            className={inputClass}
+            ref={ebookRef}
+            type="file"
+            accept=".pdf,.epub,.doc,.docx"
+            className="hidden"
+            onChange={handleEbookChange}
           />
-        </div>
-
-        {/* Toggles */}
-        <div className="flex gap-6">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.is_active}
-              onChange={(e) => set("is_active", e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-            />
-            Active
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={form.is_featured}
-              onChange={(e) => set("is_featured", e.target.checked)}
-              className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-            />
-            Featured
-          </label>
+          {ebookFile ? (
+            <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm">
+              <FiFile className="text-emerald-600" size={18} />
+              <span className="flex-1 truncate text-emerald-800">
+                {ebookFile.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setEbookFile(null);
+                  if (ebookRef.current) ebookRef.current.value = "";
+                }}
+                className="text-gray-400 hover:text-red-500"
+              >
+                <FiX size={16} />
+              </button>
+            </div>
+          ) : existingFileUrl ? (
+            <div className="flex items-center gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm">
+              <FiFile className="text-gray-500" size={18} />
+              <span className="flex-1 truncate text-gray-600 text-xs">
+                {existingFileUrl.split("/").pop()}
+              </span>
+              <button
+                type="button"
+                onClick={() => ebookRef.current?.click()}
+                className="text-xs text-primary hover:underline"
+              >
+                Replace
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => ebookRef.current?.click()}
+              className="flex items-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-6 py-4 text-sm text-gray-500 hover:border-primary hover:text-primary transition"
+            >
+              <FiFile size={20} />
+              Click to upload PDF / eBook
+            </button>
+          )}
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3">
+        <div className="flex gap-3 pt-2">
           <button
             type="submit"
             disabled={saving}
-            className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-50 transition"
+            className="flex items-center gap-2 rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary/90 disabled:opacity-50 transition"
           >
-            {saving ? "Saving…" : isEdit ? "Update Product" : "Create Product"}
+            {saving && (
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+            )}
+            {saving ? "Saving…" : isEdit ? "Update Product" : "Add Product"}
           </button>
           <button
             type="button"
