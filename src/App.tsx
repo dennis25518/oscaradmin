@@ -10,7 +10,6 @@ import Users from "./pages/Users";
 import Donations from "./pages/Donations";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
-import Register from "./pages/Register";
 import Maswali from "./pages/Maswali";
 import Comments from "./pages/Comments";
 import Finance from "./pages/Finance";
@@ -33,7 +32,6 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
           <Route
             path="/"
             element={
